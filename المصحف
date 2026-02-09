@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>المصحف الذكي</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Amiri+Quran&display=swap');
+        body { background: #fdf6e3; direction: rtl; font-family: 'Amiri Quran', serif; margin: 0; padding-bottom: 120px; }
+        
+        .header { background: #1a1a1a; color: #c5a059; padding: 15px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 1000; }
+        select { background: #333; color: white; border: 1px solid #c5a059; padding: 8px; border-radius: 5px; width: 65%; font-size: 16px; }
+        .eye-btn { font-size: 28px; cursor: pointer; padding: 0 10px; filter: drop-shadow(0 0 5px gold); }
+
+        .mushaf-container { max-width: 800px; margin: 20px auto; padding: 25px; text-align: justify; line-height: 2.8; min-height: 80vh; }
+        .word { font-size: 30px; color: transparent; border-bottom: 1px solid rgba(0,0,0,0.05); margin: 0 3px; transition: 0.3s; display: inline-block; }
+        .revealed { color: #000 !important; border-bottom: none; }
+        .ayah-num { color: #b08d57; font-size: 26px; margin: 0 10px; font-weight: bold; }
+
+        .footer { position: fixed; bottom: 0; left: 0; right: 0; background: #fff; padding: 20px; display: flex; justify-content: space-around; align-items: center; border-top: 1px solid #ddd; box-shadow: 0 -5px 15px rgba(0,0,0,0.05); }
+        .mic-btn { width: 85px; height: 85px; background: #4de39b; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 35px; color: white; border: 6px solid #fff; box-shadow: 0 5px 15px rgba(0,0,0,0.2); cursor: pointer; transition: 0.2s; }
+        .mic-btn.active { background: #ff4757; transform: scale(1.1); box-shadow: 0 0 25px rgba(255, 71, 87, 0.5); }
+        .nav-icon { font-size: 24px; cursor: pointer; background: #eee; padding: 10px 20px; border-radius: 15px; border: none; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <div class="eye-btn" onclick="toggleEye()">👁️</div>
+    <select id="surahSelect" onchange="loadSurah()"><option>تحميل الفهرس...</option></select>
+</div>
+
+<div class="mushaf-container" id="mushafContent">
+    جاري فتح المصحف...
+</div>
+
+<div class="footer">
+    <button class="nav-icon" onclick="alert('تنبيه: اقرأ بوضوح لتظهر الكلمات')">⚠️</button>
+    <div class="mic-btn" id="micBtn" onclick="toggleRecognition()">🎤</div>
+    <button class="nav-icon" onclick="location.reload()">◀◀</button>
+</div>
+
+<script>
+    let allWords = [];
+    let isListening = false;
+    let recognition;
+
+    // 1. تحميل الفهرس
+    fetch('https://api.alquran.cloud/v1/surah').then(r => r.json()).then(data => {
+        const select = document.getElementById('surahSelect');
+        select.innerHTML = data.data.map(s => `<option value="${s.number}">${s.name}</option>`).join('');
+        loadSurah(); 
+    });
+
+    // 2. تحميل السورة وتوزيع الكلمات
+    async function loadSurah() {
+        const num = document.getElementById('surahSelect').value || 1;
+        const res = await fetch(`https://api.alquran.cloud/v1/surah/${num}`);
+        const data = await res.json();
+        const container = document.getElementById('mushafContent');
+        container.innerHTML = "";
+        allWords = [];
+
+        data.data.ayahs.forEach(ayah => {
+            ayah.text.split(" ").forEach(w => {
+                const span = document.createElement('span');
+                span.innerText = w;
+                span.className = 'word';
+                span.dataset.clean = w.replace(/[^\u0621-\u064A]/g, "");
+                container.appendChild(span);
+                allWords.push(span);
+            });
+            container.innerHTML += `<span class="ayah-num"> ﴿${ayah.numberInSurah}﴾ </span>`;
+        });
+    }
+
+    // 3. تشغيل/إيقاف المايك
+    function toggleRecognition() {
+        if (isListening) {
+            recognition.stop();
+            return;
+        }
+
+        const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!Speech) return alert("متصفحك لا يدعم التعرف على الصوت");
+
+        recognition = new Speech();
+        recognition.lang = 'ar-SA';
+        recognition.continuous = true;
+        recognition.interimResults = true;
+
+        recognition.onstart = () => {
+            isListening = true;
+            document.getElementById('micBtn').classList.add('active');
+        };
+
+        recognition.onresult = (event) => {
+            const transcript = event.results[event.results.length - 1][0].transcript.trim();
+            transcript.split(" ").forEach(spokenWord => {
+                const cleanSpoken = spokenWord.replace(/[^\u0621-\u064A]/g, "");
+                allWords.forEach(span => {
+                    if (span.dataset.clean === cleanSpoken) {
+                        span.classList.add('revealed');
+                    }
+                });
+            });
+        };
+
+        recognition.onend = () => {
+            isListening = false;
+            document.getElementById('micBtn').classList.remove('active');
+        };
+
+        recognition.start();
+    }
+
+    // 4. تشغيل العين (إظهار الكل/إخفاء الكل)
+    function toggleEye() {
+        const isAnyHidden = allWords.some(s => !s.classList.contains('revealed'));
+        allWords.forEach(s => {
+            if (isAnyHidden) s.classList.add('revealed');
+            else s.classList.remove('revealed');
+        });
+    }
+</script>
+</body>
+</html>
